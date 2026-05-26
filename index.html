@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aegis Drive - Advanced Real-Time Driver Drowsiness Detection System</title>
+    <!-- Google Fonts: Space Grotesk & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="dark-theme">
+    <div id="app">
+      <!-- Full-screen Flashing Alert Overlay for Drowsiness -->
+      <div id="drowsiness-alarm-overlay" class="alarm-overlay hidden">
+        <div class="alarm-content animate-shake">
+          <div class="alarm-icon">⚠️</div>
+          <h1>WAKE UP!</h1>
+          <p>Drowsiness detected. Please pull over safely.</p>
+        </div>
+      </div>
+
+      <!-- Welcome / Calibration Wizard Overlay -->
+      <div id="calibration-overlay" class="overlay">
+        <div class="modal-card">
+          <div class="modal-header">
+            <span class="logo-text">🚗 AEGIS DRIVE</span>
+            <h2>Active Driver Safety Guard</h2>
+          </div>
+          <div class="modal-body">
+            <p>Welcome! Aegis Drive uses high-performance, on-device AI to detect driver drowsiness and distraction in real-time. Your camera feed is processed entirely locally and never leaves your computer.</p>
+            
+            <div class="steps-indicator">
+              <span class="step active" id="step-1-indicator">1. Access</span>
+              <span class="step" id="step-2-indicator">2. Calibrate</span>
+              <span class="step" id="step-3-indicator">3. Drive</span>
+            </div>
+
+            <div id="calibration-step-content">
+              <!-- Step 1: Camera Access -->
+              <div class="step-view" id="step-1-view">
+                <div class="icon-circle">📹</div>
+                <h3>Camera Authorization</h3>
+                <p>We need access to your webcam to monitor facial mesh coordinates. Please authorize when prompted.</p>
+                <button id="btn-request-camera" class="btn btn-primary">Grant Camera Access</button>
+              </div>
+
+              <!-- Step 2: Live Calibration -->
+              <div class="step-view hidden" id="step-2-view">
+                <div class="calibration-preview-container">
+                  <video id="calibration-video" autoplay muted playsinline></video>
+                  <canvas id="calibration-canvas"></canvas>
+                  <div class="calibration-crosshair"></div>
+                </div>
+                <h3>Personalized Calibration</h3>
+                <p id="calibration-instruction">Position your face in the frame and look straight ahead with open eyes.</p>
+                <div class="calibration-progress-bar">
+                  <div class="progress-fill" id="calibration-progress">0%</div>
+                </div>
+                <button id="btn-start-calibration" class="btn btn-primary" style="display: none;">Start Calibration</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Dashboard Layout -->
+      <div class="dashboard-container">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+          <div class="logo">
+            <span class="logo-icon">🛡️</span>
+            <div class="logo-title-wrap">
+              <span class="logo-title">Aegis Drive</span>
+              <span class="logo-tag">AI Safety Hub</span>
+            </div>
+          </div>
+
+          <nav class="nav-menu">
+            <a href="#" class="nav-item active" id="nav-dashboard">
+              <span class="nav-icon">📊</span> Dashboard
+            </a>
+            <a href="#" class="nav-item" id="nav-settings-toggle">
+              <span class="nav-icon">⚙️</span> Settings
+            </a>
+            <a href="https://github.com/GaneshSarode/Real-Time-Driver-Drowsiness-Detection" target="_blank" class="nav-item">
+              <span class="nav-icon">🐙</span> GitHub
+            </a>
+          </nav>
+
+          <div class="system-status-card">
+            <div class="status-header">
+              <span class="status-bullet active" id="system-status-bullet"></span>
+              <span id="system-status-text">System Active</span>
+            </div>
+            <p>Engine: MediaPipe FaceMesh</p>
+            <p id="fps-counter">FPS: --</p>
+          </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+          
+          <!-- Top Bar -->
+          <header class="topbar">
+            <div class="greeting-wrap">
+              <h1>Driver Telemetry Monitor</h1>
+              <p>Keep your eyes on the road. Drive safe.</p>
+            </div>
+            <div class="global-alerts" id="telemetry-banner">
+              <div class="alert-status safe" id="hud-status-badge">
+                <span class="pulse-ring"></span>
+                <span id="hud-status-text">STATUS: ACTIVE & SAFE</span>
+              </div>
+            </div>
+          </header>
+
+          <!-- Grid Dashboard -->
+          <div class="dashboard-grid">
+            
+            <!-- Left Panel: Webcam Stream -->
+            <section class="grid-card feed-card">
+              <div class="card-header">
+                <h2>Live Driver Tracking</h2>
+                <div class="card-controls">
+                  <button id="btn-toggle-camera" class="btn btn-icon" title="Toggle Camera">📹</button>
+                  <button id="btn-recalibrate" class="btn btn-secondary btn-sm">Recalibrate</button>
+                  <button id="btn-toggle-mute" class="btn btn-icon" title="Toggle Alarm Mute">🔊</button>
+                </div>
+              </div>
+              <div class="video-container">
+                <video id="webcam-video" autoplay muted playsinline class="hidden"></video>
+                <canvas id="mesh-canvas"></canvas>
+                <div id="loading-spinner" class="spinner-container">
+                  <div class="spinner"></div>
+                  <p>Loading AI Landmarker Model...</p>
+                </div>
+                <!-- Neon HUD Overlay guides -->
+                <div class="hud-lines">
+                  <div class="hud-line top-left"></div>
+                  <div class="hud-line top-right"></div>
+                  <div class="hud-line bottom-left"></div>
+                  <div class="hud-line bottom-right"></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Right Panel: Live Stats and Metrics -->
+            <section class="right-column-grid">
+              
+              <!-- Metrics Cards Row -->
+              <div class="metrics-row">
+                <!-- Eye Status Card -->
+                <div class="metric-card">
+                  <div class="metric-header">
+                    <h3>Eye Aspect Ratio (EAR)</h3>
+                    <span class="info-tooltip" title="Measures how wide open the eyes are. Below 0.22 signifies closed eyes.">ℹ️</span>
+                  </div>
+                  <div class="metric-value-wrap">
+                    <span class="metric-value" id="val-ear">0.32</span>
+                    <span class="metric-unit">ratio</span>
+                  </div>
+                  <div class="metric-progress-container">
+                    <div class="progress-bar-bg">
+                      <div class="progress-bar-fill" id="fill-ear" style="width: 80%;"></div>
+                    </div>
+                  </div>
+                  <div class="metric-footer">
+                    <span>Threshold: <strong id="lbl-ear-thresh">0.22</strong></span>
+                    <span id="lbl-ear-state" class="state-badge safe">OPEN</span>
+                  </div>
+                </div>
+
+                <!-- Yawn/Mouth Status Card -->
+                <div class="metric-card">
+                  <div class="metric-header">
+                    <h3>Mouth Aspect Ratio (MAR)</h3>
+                    <span class="info-tooltip" title="Measures mouth vertical opening. High value indicates yawning.">ℹ️</span>
+                  </div>
+                  <div class="metric-value-wrap">
+                    <span class="metric-value" id="val-mar">0.12</span>
+                    <span class="metric-unit">ratio</span>
+                  </div>
+                  <div class="metric-progress-container">
+                    <div class="progress-bar-bg">
+                      <div class="progress-bar-fill" id="fill-mar" style="width: 20%;"></div>
+                    </div>
+                  </div>
+                  <div class="metric-footer">
+                    <span>Threshold: <strong id="lbl-mar-thresh">0.55</strong></span>
+                    <span id="lbl-mar-state" class="state-badge safe">CLOSED</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Stat Counters Grid -->
+              <div class="stats-counters-grid">
+                <div class="stat-counter-card">
+                  <span class="stat-icon">🥱</span>
+                  <div class="stat-info">
+                    <h4>Yawn Count</h4>
+                    <span class="stat-number" id="count-yawns">0</span>
+                  </div>
+                </div>
+                <div class="stat-counter-card">
+                  <span class="stat-icon">👁️</span>
+                  <div class="stat-info">
+                    <h4>Blinks</h4>
+                    <span class="stat-number" id="count-blinks">0</span>
+                  </div>
+                </div>
+                <div class="stat-counter-card">
+                  <span class="stat-icon">🧭</span>
+                  <div class="stat-info">
+                    <h4>Head Pose</h4>
+                    <span class="stat-number text-sm" id="pose-state">Ahead</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Real-Time Activity Log -->
+              <div class="grid-card log-card">
+                <div class="card-header">
+                  <h2>Safety Event Log</h2>
+                  <button id="btn-clear-logs" class="btn btn-text">Clear</button>
+                </div>
+                <div class="log-list" id="log-container">
+                  <div class="log-item system">
+                    <span class="log-time">System initialized</span>
+                    <span class="log-msg">Ready for camera connection.</span>
+                  </div>
+                </div>
+              </div>
+
+            </section>
+
+          </div>
+
+        </main>
+
+        <!-- Right Drawer: Settings Panel -->
+        <aside class="settings-drawer hidden" id="settings-panel">
+          <div class="drawer-header">
+            <h2>AI Detection Settings</h2>
+            <button id="btn-close-settings" class="btn btn-icon">✕</button>
+          </div>
+
+          <div class="drawer-body">
+            
+            <div class="settings-group">
+              <h3>Eye Closure Threshold (EAR)</h3>
+              <p class="settings-desc">Adjust the minimum eye aspect ratio that is considered "closed".</p>
+              <div class="slider-wrap">
+                <input type="range" id="input-ear-threshold" min="0.15" max="0.30" step="0.01" value="0.22">
+                <span id="val-ear-threshold" class="slider-val">0.22</span>
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <h3>Drowsiness Alert Duration</h3>
+              <p class="settings-desc">Number of consecutive seconds eyes must remain closed before the alarm triggers.</p>
+              <div class="slider-wrap">
+                <input type="range" id="input-alarm-duration" min="0.5" max="3.0" step="0.1" value="1.5">
+                <span id="val-alarm-duration" class="slider-val">1.5s</span>
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <h3>Yawn Threshold (MAR)</h3>
+              <p class="settings-desc">Adjust the minimum mouth aspect ratio that is considered "yawning".</p>
+              <div class="slider-wrap">
+                <input type="range" id="input-mar-threshold" min="0.40" max="0.75" step="0.01" value="0.55">
+                <span id="val-mar-threshold" class="slider-val">0.55</span>
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <h3>Alarm Volume & Sound</h3>
+              <p class="settings-desc">Synthesized sound wave volume.</p>
+              <div class="slider-wrap">
+                <input type="range" id="input-alarm-volume" min="0" max="1" step="0.05" value="0.70">
+                <span id="val-alarm-volume" class="slider-val">70%</span>
+              </div>
+            </div>
+
+            <div class="settings-group">
+              <h3>Visual Alert Effects</h3>
+              <label class="toggle-switch">
+                <input type="checkbox" id="input-visual-alert" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Full-screen flash overlay</span>
+              </label>
+            </div>
+
+            <div class="settings-group">
+              <h3>Tracking Guide Lines</h3>
+              <label class="toggle-switch">
+                <input type="checkbox" id="input-draw-mesh" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Render facial mesh points</span>
+              </label>
+            </div>
+
+          </div>
+
+          <div class="drawer-footer">
+            <button id="btn-reset-settings" class="btn btn-secondary btn-block">Reset to Defaults</button>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+    
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
