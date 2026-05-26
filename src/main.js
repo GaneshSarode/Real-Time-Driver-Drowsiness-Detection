@@ -169,7 +169,9 @@ const elements = {
   inputAlarmVolume: document.getElementById("input-alarm-volume"),
   valAlarmVolume: document.getElementById("val-alarm-volume"),
   inputVisualAlert: document.getElementById("input-visual-alert"),
-  inputDrawMesh: document.getElementById("input-draw-mesh")
+  inputDrawMesh: document.getElementById("input-draw-mesh"),
+  btnThemeToggle: document.getElementById("btn-theme-toggle"),
+  themeToggleIcon: document.getElementById("theme-toggle-icon")
 };
 
 // Contexts
@@ -1021,10 +1023,53 @@ function initDashboardControls() {
 }
 
 // ==========================================================================
+// Theme Settings Manager (Light/Dark Toggle)
+// ==========================================================================
+
+function initThemeToggle() {
+  const savedTheme = localStorage.getItem("theme");
+  
+  // Default to dark theme if not saved
+  if (savedTheme === "light") {
+    document.body.classList.add("light-theme");
+    if (elements.themeToggleIcon) {
+      elements.themeToggleIcon.textContent = "🌙";
+    }
+  } else {
+    document.body.classList.remove("light-theme");
+    if (elements.themeToggleIcon) {
+      elements.themeToggleIcon.textContent = "☀️";
+    }
+  }
+
+  if (elements.btnThemeToggle) {
+    elements.btnThemeToggle.addEventListener("click", () => {
+      const isLight = document.body.classList.toggle("light-theme");
+      if (isLight) {
+        localStorage.setItem("theme", "light");
+        if (elements.themeToggleIcon) {
+          elements.themeToggleIcon.textContent = "🌙";
+        }
+        addLog("Interface switched to Light Mode.", "system");
+      } else {
+        localStorage.setItem("theme", "dark");
+        if (elements.themeToggleIcon) {
+          elements.themeToggleIcon.textContent = "☀️";
+        }
+        addLog("Interface switched to Dark Mode.", "system");
+      }
+    });
+  }
+}
+
+// ==========================================================================
 // Initialization Orchestrator
 // ==========================================================================
 
 window.addEventListener("DOMContentLoaded", () => {
+  // Initialize theme first to avoid flash of dark mode
+  initThemeToggle();
+
   // Pre-load MediaPipe Model
   initFaceLandmarker();
   

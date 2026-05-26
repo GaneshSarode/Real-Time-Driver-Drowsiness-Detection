@@ -8,7 +8,7 @@
   --font-mono: 'Space Grotesk', monospace, sans-serif;
 
   /* Color Palette (Sleek Space Theme) */
-  --bg-main: #060913;
+  --bg-main: #0a0e1a;
   --bg-surface: rgba(13, 20, 38, 0.45);
   --bg-surface-solid: #0d1426;
   --bg-card: rgba(20, 29, 56, 0.35);
@@ -37,6 +37,81 @@
   --sidebar-width: 280px;
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --blur-amount: 16px;
+}
+
+body.light-theme {
+  --bg-main: #ffffff;
+  --bg-surface: rgba(241, 245, 249, 0.7);
+  --bg-surface-solid: #f1f5f9;
+  --bg-card: rgba(226, 232, 240, 0.65);
+  --bg-card-hover: rgba(203, 213, 225, 0.8);
+  
+  --border-color: rgba(15, 23, 42, 0.08);
+  --border-color-glow: rgba(59, 130, 246, 0.12);
+
+  /* Status Colors for better contrast on white background */
+  --color-primary: #2563eb; /* Tech Blue (darker for contrast) */
+  --color-primary-glow: rgba(37, 99, 235, 0.15);
+  
+  --color-safe: #059669; /* Emerald Green (keep green accent!) */
+  --color-safe-glow: rgba(5, 150, 105, 0.15);
+  
+  --color-warning: #d97706; /* Amber (darker for contrast) */
+  --color-warning-glow: rgba(217, 119, 6, 0.15);
+  
+  --color-alarm: #dc2626; /* Crimson Red (darker for contrast) */
+  --color-alarm-glow: rgba(220, 38, 38, 0.2);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+}
+
+/* Light Theme Component Tweaks */
+body.light-theme .logo-title {
+  background: linear-gradient(135deg, #0f172a 0%, #2563eb 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+body.light-theme .video-container {
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+body.light-theme .system-status-card {
+  background: rgba(15, 23, 42, 0.02);
+}
+
+body.light-theme ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.1);
+}
+
+body.light-theme ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.2);
+}
+
+body.light-theme .btn-icon {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+body.light-theme .btn-icon:hover {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+/* Theme Toggle Sidebar Styles */
+.sidebar-theme-toggle {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+#btn-theme-toggle {
+  transition: var(--transition-smooth);
+}
+
+#btn-theme-toggle:hover {
+  transform: scale(1.08);
 }
 
 /* Reset & Core Base Styles */
