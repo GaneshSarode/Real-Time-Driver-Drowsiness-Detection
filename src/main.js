@@ -1,4 +1,10 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import './styles/design-system.css';
+import './styles/dashboard.css';
+import { initTheme } from './lib/theme.js';
+import { requireAuth, mountUserButton, getUserId } from './lib/clerk.js';
+import { SessionRecorder } from './lib/session-recorder.js';
+import { icon } from './lib/icons.js';
 
 // ==========================================================================
 // Aegis Drive - Application Core State & Configuration
@@ -57,8 +63,16 @@ const state = {
   alarmLfo: null,
   alarmLfoGain: null,
   alarmGainNode: null,
-  isAlarmSounding: false
+  isAlarmSounding: false,
+
+  // Session tracking (for Supabase)
+  alertCount: 0,
+  maxConsecutiveClosedFrames: 0,
+  _currentClosedRun: 0
 };
+
+// Session recorder instance (initialized after auth)
+let sessionRecorder = null;
 
 // Index mappings for MediaPipe Face Mesh
 const FACE_LANDMARKS = {
@@ -128,13 +142,14 @@ const elements = {
   fpsCounter: document.getElementById("fps-counter"),
   hudStatusBadge: document.getElementById("hud-status-badge"),
   hudStatusText: document.getElementById("hud-status-text"),
-  feedCard: document.querySelector(".feed-card"),
+  hudPulseDot: document.getElementById("hud-pulse-dot"),
+  feedCard: document.getElementById("feed-card"),
   
-  // Metrics Values
-  valEar: document.getElementById("val-ear"),
-  valMar: document.getElementById("val-mar"),
-  fillEar: document.getElementById("fill-ear"),
-  fillMar: document.getElementById("fill-mar"),
+  // Gauge Elements (SVG circular)
+  gaugeEarFill: document.getElementById("gauge-ear-fill"),
+  gaugeEarValue: document.getElementById("gauge-ear-value"),
+  gaugeMarFill: document.getElementById("gauge-mar-fill"),
+  gaugeMarValue: document.getElementById("gauge-mar-value"),
   lblEarThresh: document.getElementById("lbl-ear-thresh"),
   lblMarThresh: document.getElementById("lbl-mar-thresh"),
   lblEarState: document.getElementById("lbl-ear-state"),
@@ -155,7 +170,6 @@ const elements = {
   // Settings Drawer
   settingsPanel: document.getElementById("settings-panel"),
   btnSettingsToggle: document.getElementById("nav-settings-toggle"),
-  btnDashboardNav: document.getElementById("nav-dashboard"),
   btnCloseSettings: document.getElementById("btn-close-settings"),
   btnResetSettings: document.getElementById("btn-reset-settings"),
   
@@ -170,13 +184,14 @@ const elements = {
   valAlarmVolume: document.getElementById("val-alarm-volume"),
   inputVisualAlert: document.getElementById("input-visual-alert"),
   inputDrawMesh: document.getElementById("input-draw-mesh"),
-  btnThemeToggle: document.getElementById("btn-theme-toggle"),
-  themeToggleIcon: document.getElementById("theme-toggle-icon")
 };
 
 // Contexts
 let meshCtx = elements.meshCanvas.getContext("2d");
 let calCtx = elements.calibrationCanvas.getContext("2d");
+
+// SVG gauge constants
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 50; // r=50
 
 // ==========================================================================
 // Sound Alert Synthesizer (Web Audio API)
@@ -265,7 +280,7 @@ function addLog(message, type = "system") {
   const logItem = document.createElement("div");
   logItem.className = `log-item ${type}`;
   logItem.innerHTML = `
-    <span class="log-time">${time}</span>
+    <span class="log-time font-mono">${time}</span>
     <span class="log-msg">${message}</span>
   `;
   elements.logContainer.appendChild(logItem);
@@ -352,13 +367,11 @@ function estimateHeadPose(landmarks) {
   const rightCheek = landmarks[h.rightCheek];
 
   // 1. Nodding off detection (Pitch)
-  // Distance from nose to chin normalized by forehead-to-chin length
   const verticalRange = distance3D(forehead, chin);
   const noseToChin = distance3D(nose, chin);
   const verticalRatio = noseToChin / verticalRange;
 
   // 2. Looking away detection (Yaw)
-  // Ratio of left cheek to nose distance vs right cheek to nose distance
   const distLeft = distance3D(leftCheek, nose);
   const distRight = distance3D(rightCheek, nose);
   const yawRatio = distLeft / distRight;
@@ -383,8 +396,8 @@ function drawFacialVisuals(landmarks, canvas, ctx) {
   if (!state.drawMeshPoints) return;
 
   ctx.strokeStyle = state.currentStatus === "ALARM" 
-    ? "rgba(239, 68, 68, 0.45)" 
-    : "rgba(59, 130, 246, 0.35)";
+    ? "rgba(255, 59, 59, 0.45)" 
+    : "rgba(0, 255, 136, 0.35)";
   ctx.lineWidth = 1;
 
   // Draw eye outline loops
@@ -394,18 +407,15 @@ function drawFacialVisuals(landmarks, canvas, ctx) {
   // Draw inner lips loop
   drawConnectionLoop(ctx, landmarks, [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191]);
 
-  // Highlight active points for EAR & MAR in a bright neon glowing shade
-  ctx.fillStyle = state.currentStatus === "ALARM" ? "#ef4444" : "#10b981";
+  // Highlight active points for EAR & MAR
+  ctx.fillStyle = state.currentStatus === "ALARM" ? "#ff3b3b" : "#00ff88";
   const highlightedPoints = [
-    // Left eye EAR points
     FACE_LANDMARKS.leftEye.corner1, FACE_LANDMARKS.leftEye.corner2,
     FACE_LANDMARKS.leftEye.upper1, FACE_LANDMARKS.leftEye.upper2,
     FACE_LANDMARKS.leftEye.lower1, FACE_LANDMARKS.leftEye.lower2,
-    // Right eye EAR points
     FACE_LANDMARKS.rightEye.corner1, FACE_LANDMARKS.rightEye.corner2,
     FACE_LANDMARKS.rightEye.upper1, FACE_LANDMARKS.rightEye.upper2,
     FACE_LANDMARKS.rightEye.lower1, FACE_LANDMARKS.rightEye.lower2,
-    // Mouth points
     FACE_LANDMARKS.mouth.innerTop, FACE_LANDMARKS.mouth.innerBottom,
     FACE_LANDMARKS.mouth.leftCorner, FACE_LANDMARKS.mouth.rightCorner
   ];
@@ -485,6 +495,11 @@ async function startDetectionLoop() {
 
         // 5. Render overlays on canvas
         drawFacialVisuals(landmarks, elements.meshCanvas, meshCtx);
+
+        // 6. Feed samples to session recorder
+        if (sessionRecorder) {
+          sessionRecorder.addSample(currentEAR, currentMAR);
+        }
       } else {
         // No faces in frame
         handleNoFaceDetected();
@@ -507,32 +522,33 @@ function processTelemetryMetrics() {
   const isEyeClosed = state.ear < state.earThreshold;
 
   if (isEyeClosed) {
+    state._currentClosedRun++;
+    if (state._currentClosedRun > state.maxConsecutiveClosedFrames) {
+      state.maxConsecutiveClosedFrames = state._currentClosedRun;
+    }
+
     if (!state.wasEyeClosedLastFrame) {
-      // First frame eye closure
       state.eyeCloseStartTimestamp = now;
       state.wasEyeClosedLastFrame = true;
     }
     
     const duration = (now - state.eyeCloseStartTimestamp) / 1000.0;
     
-    // Check if micro-sleep threshold reached
     if (duration >= state.alarmDurationSeconds) {
       triggerStatusState("ALARM");
     }
   } else {
+    state._currentClosedRun = 0;
     if (state.wasEyeClosedLastFrame) {
-      // Eyes reopened! Measure how long they were closed
       const closureDuration = (now - state.eyeCloseStartTimestamp) / 1000.0;
       state.wasEyeClosedLastFrame = false;
       
-      // A quick closure (<350ms) counts as a healthy blink
       if (closureDuration > 0.05 && closureDuration < 0.38) {
         state.blinkCount++;
         elements.countBlinks.textContent = state.blinkCount;
       }
     }
     
-    // Reset closed frame alarm counter if status isn't forced by distraction
     if (state.pose === "Ahead") {
       triggerStatusState("SAFE");
     }
@@ -542,7 +558,6 @@ function processTelemetryMetrics() {
   if (state.mar > state.marThreshold) {
     if (!state.yawnInProgress) {
       state.yawnFrames++;
-      // Wait for a few consecutive frames to avoid flash false alarms
       if (state.yawnFrames > 35) {
         state.yawnInProgress = true;
         state.yawnCount++;
@@ -558,13 +573,13 @@ function processTelemetryMetrics() {
   // ----- HEAD POSE / DISTRACTION MACHINE -----
   if (state.pose === "Nodding Down") {
     state.noddingFrames++;
-    if (state.noddingFrames > 25) { // Nodded for ~0.8s
+    if (state.noddingFrames > 25) {
       triggerStatusState("ALARM");
     }
   } else if (state.pose === "Looking Away") {
     state.distractedFrames++;
     state.noddingFrames = 0;
-    if (state.distractedFrames > 45) { // Distracted for ~1.5s
+    if (state.distractedFrames > 45) {
       triggerStatusState("DISTRACTED");
     }
   } else {
@@ -583,13 +598,12 @@ function handleNoFaceDetected() {
   meshCtx.clearRect(0, 0, elements.meshCanvas.width, elements.meshCanvas.height);
   state.pose = "No Face";
   elements.poseState.textContent = "No Face";
-  triggerStatusState("SAFE"); // Reset alarm temporarily
+  triggerStatusState("SAFE");
   
-  // Set UI displays to empty tracking
-  elements.valEar.textContent = "--";
-  elements.valMar.textContent = "--";
-  elements.fillEar.style.width = "0%";
-  elements.fillMar.style.width = "0%";
+  elements.gaugeEarValue.textContent = "--";
+  elements.gaugeMarValue.textContent = "--";
+  setGaugeFill(elements.gaugeEarFill, 0);
+  setGaugeFill(elements.gaugeMarFill, 0);
 }
 
 function triggerStatusState(newStatus) {
@@ -598,101 +612,106 @@ function triggerStatusState(newStatus) {
   const oldStatus = state.currentStatus;
   state.currentStatus = newStatus;
 
-  // Handle Alarm activations
   if (newStatus === "ALARM") {
+    state.alertCount++;
     addLog("CRITICAL: Drowsiness Alert triggered! Active micro-sleep.", "alarm");
     
-    // Activate HUD warning classes
     elements.feedCard.classList.add("alarm-active");
-    elements.systemStatusBullet.className = "status-bullet alarm";
+    elements.systemStatusBullet.className = "pulse-dot danger";
     elements.systemStatusText.textContent = "ALARM: Drowsy Driver";
     
-    // Status Badge HUD update
-    elements.hudStatusBadge.className = "alert-status alarm";
-    elements.hudStatusText.textContent = "STATUS: SLEEP WARNING";
+    elements.hudStatusBadge.className = "status-badge status-danger";
+    elements.hudPulseDot.className = "pulse-dot danger";
+    elements.hudStatusText.textContent = "SLEEP WARNING";
 
-    // Start loud tone synth
     startAlarmAudio();
 
-    // Flash Screen Overlay
     if (state.enableVisualAlert) {
       elements.drowsinessAlarmOverlay.classList.remove("hidden");
     }
   } 
-  
-  // Handle Distractions
   else if (newStatus === "DISTRACTED") {
-    addLog("WARNING: Driver distracted - please focus on the road.", "warning");
+    addLog("WARNING: Driver distracted — please focus on the road.", "warning");
     elements.feedCard.classList.remove("alarm-active");
-    elements.systemStatusBullet.className = "status-bullet warning";
+    elements.systemStatusBullet.className = "pulse-dot warning";
     elements.systemStatusText.textContent = "System Alert";
     
-    elements.hudStatusBadge.className = "alert-status warning";
-    elements.hudStatusText.textContent = "STATUS: DISTRACTED";
+    elements.hudStatusBadge.className = "status-badge status-warning";
+    elements.hudPulseDot.className = "pulse-dot warning";
+    elements.hudStatusText.textContent = "DISTRACTED";
     
     stopAlarmAudio();
     elements.drowsinessAlarmOverlay.classList.add("hidden");
   } 
-  
-  // Back to Safe
   else if (newStatus === "SAFE") {
     if (oldStatus === "ALARM") {
       addLog("System cleared. Driver alertness restored.", "system");
     }
     
     elements.feedCard.classList.remove("alarm-active");
-    elements.systemStatusBullet.className = "status-bullet";
+    elements.systemStatusBullet.className = "pulse-dot safe";
     elements.systemStatusText.textContent = "System Active";
     
-    elements.hudStatusBadge.className = "alert-status safe";
-    elements.hudStatusText.textContent = "STATUS: ACTIVE & SAFE";
+    elements.hudStatusBadge.className = "status-badge status-safe";
+    elements.hudPulseDot.className = "pulse-dot safe";
+    elements.hudStatusText.textContent = "ACTIVE & SAFE";
 
     stopAlarmAudio();
     elements.drowsinessAlarmOverlay.classList.add("hidden");
   }
 }
 
+// ==========================================================================
+// SVG Gauge Helpers
+// ==========================================================================
+
+function setGaugeFill(el, percent) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  const dashLen = (clamped / 100) * GAUGE_CIRCUMFERENCE;
+  el.setAttribute("stroke-dasharray", `${dashLen} ${GAUGE_CIRCUMFERENCE}`);
+}
+
 function updateDashboardHUDs() {
-  // Update EAR Display
-  elements.valEar.textContent = state.ear.toFixed(2);
+  // Update EAR Gauge
+  elements.gaugeEarValue.textContent = state.ear.toFixed(2);
   const earPercent = Math.min(100, Math.max(0, (state.ear / 0.45) * 100));
-  elements.fillEar.style.width = `${earPercent}%`;
+  setGaugeFill(elements.gaugeEarFill, earPercent);
 
   if (state.ear < state.earThreshold) {
     elements.lblEarState.textContent = "CLOSED";
-    elements.lblEarState.className = "state-badge alarm";
-    elements.fillEar.style.background = "var(--color-alarm)";
+    elements.lblEarState.className = "status-badge status-danger";
+    elements.gaugeEarFill.classList.add("danger");
+    elements.gaugeEarFill.classList.remove("warning");
   } else {
     elements.lblEarState.textContent = "OPEN";
-    elements.lblEarState.className = "state-badge safe";
-    elements.fillEar.style.background = "linear-gradient(90deg, var(--color-primary) 0%, #60a5fa 100%)";
+    elements.lblEarState.className = "status-badge status-safe";
+    elements.gaugeEarFill.classList.remove("danger", "warning");
   }
 
-  // Update MAR Display
-  elements.valMar.textContent = state.mar.toFixed(2);
+  // Update MAR Gauge
+  elements.gaugeMarValue.textContent = state.mar.toFixed(2);
   const marPercent = Math.min(100, Math.max(0, (state.mar / 0.8) * 100));
-  elements.fillMar.style.width = `${marPercent}%`;
+  setGaugeFill(elements.gaugeMarFill, marPercent);
 
   if (state.mar > state.marThreshold) {
     elements.lblMarState.textContent = "YAWNING";
-    elements.lblMarState.className = "state-badge warning";
-    elements.fillMar.style.background = "var(--color-warning)";
+    elements.lblMarState.className = "status-badge status-warning";
+    elements.gaugeMarFill.classList.add("warning");
+    elements.gaugeMarFill.classList.remove("danger");
   } else {
     elements.lblMarState.textContent = "CLOSED";
-    elements.lblMarState.className = "state-badge safe";
-    elements.fillMar.style.background = "linear-gradient(90deg, var(--color-primary) 0%, #60a5fa 100%)";
+    elements.lblMarState.className = "status-badge status-safe";
+    elements.gaugeMarFill.classList.remove("danger", "warning");
   }
 
   // Update Head Pose Text
   elements.poseState.textContent = state.pose;
-  if (state.pose === "Ahead") {
-    elements.poseState.className = "stat-number text-sm";
-  } else if (state.pose === "Nodding Down") {
-    elements.poseState.className = "stat-number text-sm text-red-400";
-    elements.poseState.style.color = "var(--color-alarm)";
+  if (state.pose === "Nodding Down") {
+    elements.poseState.style.color = "var(--danger)";
+  } else if (state.pose === "Looking Away") {
+    elements.poseState.style.color = "var(--warning)";
   } else {
-    elements.poseState.className = "stat-number text-sm text-yellow-400";
-    elements.poseState.style.color = "var(--color-warning)";
+    elements.poseState.style.color = "";
   }
 }
 
@@ -718,7 +737,6 @@ async function requestCameraStream(videoElement) {
     state.stream = await navigator.mediaDevices.getUserMedia(constraints);
     videoElement.srcObject = state.stream;
     
-    // Play video stream
     return new Promise(resolve => {
       videoElement.onloadedmetadata = () => {
         videoElement.play();
@@ -742,7 +760,6 @@ let calibrationEarSum = 0;
 let isCalibrating = false;
 
 async function startCalibrationFlow() {
-  // Turn on preview stream in calibration window
   const active = await requestCameraStream(elements.calibrationVideo);
   if (!active) return;
 
@@ -751,7 +768,6 @@ async function startCalibrationFlow() {
   elements.calibrationCanvas.width = 320;
   elements.calibrationCanvas.height = 240;
 
-  // Move to step 2 indicator
   elements.step1View.classList.add("hidden");
   elements.step2View.classList.remove("hidden");
   elements.step1Indicator.classList.remove("active");
@@ -775,7 +791,6 @@ function runCalibrationCanvasLoop() {
       if (results.faceLandmarks && results.faceLandmarks.length > 0) {
         const landmarks = results.faceLandmarks[0];
         
-        // Show active mesh guidelines inside calibration window
         drawFacialVisuals(landmarks, elements.calibrationCanvas, calCtx);
         elements.btnStartCalibration.style.display = "block";
 
@@ -789,14 +804,10 @@ function runCalibrationCanvasLoop() {
           elements.calibrationProgress.textContent = `${percent}%`;
 
           if (calibrationFrameCount >= 90) {
-            // Completed 3-seconds calibration (at ~30fps)
             isCalibrating = false;
             state.calibratedOpenEAR = calibrationEarSum / calibrationFrameCount;
             
-            // Set dynamic EAR threshold to 70% of open eyes average
             state.earThreshold = state.calibratedOpenEAR * 0.70;
-            
-            // Sync settings sliders
             state.earThreshold = Math.min(0.30, Math.max(0.15, state.earThreshold));
             elements.inputEarThreshold.value = state.earThreshold.toFixed(2);
             elements.valEarThreshold.textContent = state.earThreshold.toFixed(2);
@@ -807,10 +818,9 @@ function runCalibrationCanvasLoop() {
           }
         }
       } else {
-        // Guide them to reposition
         elements.btnStartCalibration.style.display = "none";
-        calCtx.fillStyle = "rgba(239, 68, 68, 0.8)";
-        calCtx.font = "12px Space Grotesk";
+        calCtx.fillStyle = "rgba(255, 59, 59, 0.8)";
+        calCtx.font = "12px 'Space Grotesk'";
         calCtx.fillText("Align Face in Center", 95, 20);
       }
     }
@@ -828,18 +838,15 @@ function runCalibration() {
 }
 
 async function finishCalibrationFlow() {
-  // Step 3 UI indicator
   elements.step2Indicator.classList.remove("active");
   elements.step3Indicator.classList.add("active");
   addLog(`User calibrated open-eyes average EAR: ${state.calibratedOpenEAR.toFixed(2)}`, "system");
   addLog(`Adaptive threshold computed: ${state.earThreshold.toFixed(2)}`, "system");
 
-  // Release calibration video track
   if (elements.calibrationVideo.srcObject) {
     elements.calibrationVideo.srcObject.getTracks().forEach(t => t.stop());
   }
 
-  // Fade welcome overlay out
   elements.calibrationOverlay.style.opacity = 0;
   elements.calibrationOverlay.style.transition = "opacity 0.5s ease";
   setTimeout(() => {
@@ -851,12 +858,18 @@ async function finishCalibrationFlow() {
 async function startWebcamMonitoring() {
   elements.webcamVideo.classList.remove("hidden");
   
-  // Stream camera into dashboard element
   const active = await requestCameraStream(elements.webcamVideo);
   if (!active) return;
 
   state.isCameraActive = true;
   addLog("Monitoring stream initiated.", "system");
+
+  // Start session recording
+  const userId = getUserId();
+  if (userId) {
+    sessionRecorder = new SessionRecorder(userId, state);
+    await sessionRecorder.start();
+  }
 
   // Launch main processing frame loop
   startDetectionLoop();
@@ -867,25 +880,13 @@ async function startWebcamMonitoring() {
 // ==========================================================================
 
 function loadSettingsHandlers() {
-  // Navigation sidebar items
   elements.btnSettingsToggle.addEventListener("click", (e) => {
     e.preventDefault();
-    elements.settingsPanel.classList.remove("hidden");
-    elements.btnSettingsToggle.classList.add("active");
-    elements.btnDashboardNav.classList.remove("active");
-  });
-
-  elements.btnDashboardNav.addEventListener("click", (e) => {
-    e.preventDefault();
-    elements.settingsPanel.classList.add("hidden");
-    elements.btnSettingsToggle.classList.remove("active");
-    elements.btnDashboardNav.classList.add("active");
+    elements.settingsPanel.classList.toggle("hidden");
   });
 
   elements.btnCloseSettings.addEventListener("click", () => {
     elements.settingsPanel.classList.add("hidden");
-    elements.btnSettingsToggle.classList.remove("active");
-    elements.btnDashboardNav.classList.add("active");
   });
 
   // Slide Range inputs updates
@@ -925,7 +926,6 @@ function loadSettingsHandlers() {
   });
 
   elements.btnResetSettings.addEventListener("click", () => {
-    // Restore default configurations
     state.earThreshold = 0.22;
     state.alarmDurationSeconds = 1.5;
     state.marThreshold = 0.55;
@@ -936,17 +936,13 @@ function loadSettingsHandlers() {
     elements.inputEarThreshold.value = 0.22;
     elements.valEarThreshold.textContent = "0.22";
     elements.lblEarThresh.textContent = "0.22";
-
     elements.inputAlarmDuration.value = 1.5;
     elements.valAlarmDuration.textContent = "1.5s";
-
     elements.inputMarThreshold.value = 0.55;
     elements.valMarThreshold.textContent = "0.55";
     elements.lblMarThresh.textContent = "0.55";
-
     elements.inputAlarmVolume.value = 0.70;
     elements.valAlarmVolume.textContent = "70%";
-
     elements.inputVisualAlert.checked = true;
     elements.inputDrawMesh.checked = true;
 
@@ -960,22 +956,23 @@ function loadSettingsHandlers() {
 
 function initDashboardControls() {
   // Toggle camera button
-  elements.btnToggleCamera.addEventListener("click", () => {
+  elements.btnToggleCamera.addEventListener("click", async () => {
     if (state.isCameraActive) {
-      // Stop streaming
       if (state.stream) {
         state.stream.getTracks().forEach(t => t.stop());
       }
       state.isCameraActive = false;
       elements.webcamVideo.classList.add("hidden");
-      elements.btnToggleCamera.textContent = "📹 (Off)";
-      elements.btnToggleCamera.classList.add("btn-secondary");
       addLog("Driver tracking video feed paused.", "warning");
       triggerStatusState("SAFE");
       handleNoFaceDetected();
+
+      // Stop session recording
+      if (sessionRecorder) {
+        await sessionRecorder.stop();
+        sessionRecorder = null;
+      }
     } else {
-      elements.btnToggleCamera.textContent = "📹";
-      elements.btnToggleCamera.classList.remove("btn-secondary");
       startWebcamMonitoring();
     }
   });
@@ -983,14 +980,13 @@ function initDashboardControls() {
   // Mute warning button
   elements.btnToggleMute.addEventListener("click", () => {
     state.isMuted = !state.isMuted;
+    const muteBtn = elements.btnToggleMute;
     if (state.isMuted) {
-      elements.btnToggleMute.textContent = "🔇";
-      elements.btnToggleMute.classList.add("btn-secondary");
+      muteBtn.innerHTML = icon('mute', 18);
       addLog("System alarms muted.", "warning");
       stopAlarmAudio();
     } else {
-      elements.btnToggleMute.textContent = "🔊";
-      elements.btnToggleMute.classList.remove("btn-secondary");
+      muteBtn.innerHTML = icon('volume', 18);
       addLog("System alarms unmuted.", "system");
     }
   });
@@ -1000,7 +996,6 @@ function initDashboardControls() {
     elements.calibrationOverlay.style.opacity = 1;
     elements.calibrationOverlay.classList.remove("hidden");
     
-    // Go to camera grant step
     elements.step1View.classList.remove("hidden");
     elements.step2View.classList.add("hidden");
     elements.step1Indicator.classList.add("active");
@@ -1023,52 +1018,17 @@ function initDashboardControls() {
 }
 
 // ==========================================================================
-// Theme Settings Manager (Light/Dark Toggle)
-// ==========================================================================
-
-function initThemeToggle() {
-  const savedTheme = localStorage.getItem("theme");
-  
-  // Default to dark theme if not saved
-  if (savedTheme === "light") {
-    document.body.classList.add("light-theme");
-    if (elements.themeToggleIcon) {
-      elements.themeToggleIcon.textContent = "🌙";
-    }
-  } else {
-    document.body.classList.remove("light-theme");
-    if (elements.themeToggleIcon) {
-      elements.themeToggleIcon.textContent = "☀️";
-    }
-  }
-
-  if (elements.btnThemeToggle) {
-    elements.btnThemeToggle.addEventListener("click", () => {
-      const isLight = document.body.classList.toggle("light-theme");
-      if (isLight) {
-        localStorage.setItem("theme", "light");
-        if (elements.themeToggleIcon) {
-          elements.themeToggleIcon.textContent = "🌙";
-        }
-        addLog("Interface switched to Light Mode.", "system");
-      } else {
-        localStorage.setItem("theme", "dark");
-        if (elements.themeToggleIcon) {
-          elements.themeToggleIcon.textContent = "☀️";
-        }
-        addLog("Interface switched to Dark Mode.", "system");
-      }
-    });
-  }
-}
-
-// ==========================================================================
 // Initialization Orchestrator
 // ==========================================================================
 
-window.addEventListener("DOMContentLoaded", () => {
-  // Initialize theme first to avoid flash of dark mode
-  initThemeToggle();
+window.addEventListener("DOMContentLoaded", async () => {
+  // Initialize theme
+  initTheme('btn-theme-toggle');
+
+  // Auth check (graceful — works without Clerk keys)
+  await requireAuth();
+  const userBtnEl = document.getElementById('clerk-user-btn');
+  if (userBtnEl) mountUserButton(userBtnEl);
 
   // Pre-load MediaPipe Model
   initFaceLandmarker();

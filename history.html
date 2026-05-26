@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="View your driving session history, safety analytics, and drowsiness detection statistics." />
+    <title>History — Aegis Drive</title>
+    <link rel="icon" type="image/svg+xml" href="/icons.svg#icon-shield" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+
+      <div class="page-container">
+
+        <!-- ═══ Sidebar ═══ -->
+        <aside class="sidebar">
+          <div class="sidebar-logo">
+            <svg class="icon" width="24" height="24" style="color: var(--accent)"><use href="/icons.svg#icon-shield"/></svg>
+            <span class="sidebar-logo-text">AD</span>
+          </div>
+
+          <nav class="sidebar-nav">
+            <a href="/dashboard.html" class="sidebar-nav-item" title="Dashboard">
+              <svg class="icon" width="20" height="20"><use href="/icons.svg#icon-dashboard"/></svg>
+            </a>
+            <a href="/history.html" class="sidebar-nav-item active" title="History">
+              <svg class="icon" width="20" height="20"><use href="/icons.svg#icon-history"/></svg>
+            </a>
+          </nav>
+
+          <div class="sidebar-bottom">
+            <button class="sidebar-nav-item" id="btn-theme-toggle" title="Toggle Theme">
+              <svg class="icon" width="20" height="20"><use href="/icons.svg#icon-sun"/></svg>
+            </button>
+            <a href="https://github.com/GaneshSarode/Real-Time-Driver-Drowsiness-Detection" target="_blank" class="sidebar-nav-item" title="GitHub">
+              <svg class="icon icon-filled" width="20" height="20"><use href="/icons.svg#icon-github"/></svg>
+            </a>
+            <div id="clerk-user-btn" class="sidebar-user-btn"></div>
+          </div>
+        </aside>
+
+        <!-- ═══ Main Content ═══ -->
+        <main class="main-content">
+
+          <!-- Top Bar -->
+          <header class="topbar">
+            <div class="topbar-left">
+              <h1>Session History</h1>
+              <p class="text-muted">View your driving analytics and safety reports</p>
+            </div>
+          </header>
+
+          <!-- Stat Cards -->
+          <div class="stats-overview">
+            <div class="glass-card overview-card">
+              <div class="overview-icon">
+                <svg class="icon" width="22" height="22"><use href="/icons.svg#icon-activity"/></svg>
+              </div>
+              <div class="overview-info">
+                <span class="overview-label">Total Sessions</span>
+                <span class="overview-value font-mono" id="stat-total-sessions">0</span>
+              </div>
+            </div>
+            <div class="glass-card overview-card">
+              <div class="overview-icon">
+                <svg class="icon" width="22" height="22"><use href="/icons.svg#icon-history"/></svg>
+              </div>
+              <div class="overview-info">
+                <span class="overview-label">Drive Time</span>
+                <span class="overview-value font-mono" id="stat-drive-time">0h</span>
+              </div>
+            </div>
+            <div class="glass-card overview-card">
+              <div class="overview-icon" style="color: var(--danger)">
+                <svg class="icon" width="22" height="22"><use href="/icons.svg#icon-alert"/></svg>
+              </div>
+              <div class="overview-info">
+                <span class="overview-label">Total Alerts</span>
+                <span class="overview-value font-mono" id="stat-total-alerts">0</span>
+              </div>
+            </div>
+            <div class="glass-card overview-card">
+              <div class="overview-icon">
+                <svg class="icon" width="22" height="22"><use href="/icons.svg#icon-eye"/></svg>
+              </div>
+              <div class="overview-info">
+                <span class="overview-label">Avg EAR <small>(This Week)</small></span>
+                <span class="overview-value font-mono" id="stat-avg-ear">0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts -->
+          <div class="charts-grid">
+            <div class="glass-card chart-card">
+              <div class="chart-header">
+                <h2>
+                  <svg class="icon" width="16" height="16"><use href="/icons.svg#icon-activity"/></svg>
+                  Daily Alerts (7 Days)
+                </h2>
+              </div>
+              <div class="chart-container">
+                <canvas id="chart-alerts"></canvas>
+              </div>
+            </div>
+            <div class="glass-card chart-card">
+              <div class="chart-header">
+                <h2>
+                  <svg class="icon" width="16" height="16"><use href="/icons.svg#icon-history"/></svg>
+                  Session Duration
+                </h2>
+              </div>
+              <div class="chart-container">
+                <canvas id="chart-duration"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Session Table -->
+          <div class="glass-card table-card">
+            <div class="table-header">
+              <h2>
+                <svg class="icon" width="16" height="16"><use href="/icons.svg#icon-car"/></svg>
+                Session History
+              </h2>
+              <span class="count-badge font-mono" id="session-count">0</span>
+            </div>
+            <div class="table-wrapper">
+              <table class="sessions-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Duration</th>
+                    <th>Alerts</th>
+                    <th>Yawns</th>
+                    <th>Avg EAR</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="sessions-table-body">
+                  <tr>
+                    <td colspan="6" class="empty-state">
+                      <svg class="icon" width="32" height="32" style="color: var(--text-muted); margin-bottom: 0.5rem"><use href="/icons.svg#icon-car"/></svg>
+                      <p>No sessions recorded yet. Start monitoring to see your history.</p>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </main>
+
+      </div>
+
+    </div>
+
+    <script type="module" src="/src/history.js"></script>
+  </body>
+</html>
