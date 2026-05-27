@@ -10,18 +10,31 @@ async function init() {
   // Clerk auth check (optional — works without keys)
   const clerk = await initClerk();
 
-  // If already signed in, update CTA text
-  if (clerk && clerk.user) {
-    const cta = document.getElementById('hero-cta');
-    if (cta) {
+  // Handle Hero CTA button
+  const cta = document.getElementById('hero-cta');
+  if (cta) {
+    if (clerk && clerk.user) {
+      // Already logged in
       cta.innerHTML = `Go to Dashboard <svg class="icon" width="18" height="18"><use href="/icons.svg#icon-arrow-right"/></svg>`;
+    } else if (clerk) {
+      // Not logged in — intercept click to open modal directly
+      cta.addEventListener('click', (e) => {
+        e.preventDefault();
+        clerk.openSignIn({
+          forceRedirectUrl: '/dashboard.html',
+          fallbackRedirectUrl: '/dashboard.html'
+        });
+      });
     }
   }
 
   // Handle ?sign-in=true URL param (redirect from protected pages)
   const params = new URLSearchParams(window.location.search);
   if (params.get('sign-in') === 'true' && clerk) {
-    clerk.openSignIn();
+    clerk.openSignIn({
+      forceRedirectUrl: '/dashboard.html',
+      fallbackRedirectUrl: '/dashboard.html'
+    });
   }
 
   // Scroll reveal animation with IntersectionObserver
