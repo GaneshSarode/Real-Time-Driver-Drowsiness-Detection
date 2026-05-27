@@ -8,36 +8,45 @@ import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
 async function init() {
-  // Theme toggle
+  // Theme toggle — runs immediately
   initTheme('btn-theme-toggle');
 
-  // Auth guard
-  const clerk = await requireAuth();
-  const userId = getUserId();
+  // Render empty charts immediately so page looks good
+  renderAlertChart([]);
+  renderDurationChart([]);
 
-  // Mount user button in sidebar
-  const userBtnEl = document.getElementById('clerk-user-btn');
-  if (userBtnEl) mountUserButton(userBtnEl);
+  // Load auth + data in background — NEVER block the page
+  try {
+    const clerk = await requireAuth();
 
-  // If no userId (no auth configured), show empty state
-  if (!userId) {
-    console.warn('[History] No user ID — showing empty state');
-    return;
+    // Mount user button in sidebar
+    const userBtnEl = document.getElementById('clerk-user-btn');
+    if (userBtnEl) mountUserButton(userBtnEl);
+
+    const userId = getUserId();
+
+    // If no userId (no auth configured), keep empty state
+    if (!userId) {
+      console.warn('[History] No user ID — showing empty state');
+      return;
+    }
+
+    // Fetch data
+    const stats = await getUserStats(userId);
+    const sessions = await getUserSessions(userId);
+
+    // Update stat cards
+    updateStatCards(stats);
+
+    // Re-render charts with real data
+    renderAlertChart(sessions);
+    renderDurationChart(sessions);
+
+    // Render table
+    renderSessionTable(sessions);
+  } catch (err) {
+    console.warn('[History] Auth or data loading failed:', err);
   }
-
-  // Fetch data
-  const stats = await getUserStats(userId);
-  const sessions = await getUserSessions(userId);
-
-  // Update stat cards
-  updateStatCards(stats);
-
-  // Render charts
-  renderAlertChart(sessions);
-  renderDurationChart(sessions);
-
-  // Render table
-  renderSessionTable(sessions);
 }
 
 function updateStatCards(stats) {

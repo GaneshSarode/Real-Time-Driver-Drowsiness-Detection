@@ -1025,12 +1025,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Initialize theme
   initTheme('btn-theme-toggle');
 
-  // Auth check (graceful — works without Clerk keys)
-  await requireAuth();
-  const userBtnEl = document.getElementById('clerk-user-btn');
-  if (userBtnEl) mountUserButton(userBtnEl);
+  // Load Clerk auth in background — NEVER block the dashboard
+  (async () => {
+    try {
+      const clerk = await requireAuth();
+      const userBtnEl = document.getElementById('clerk-user-btn');
+      if (userBtnEl) mountUserButton(userBtnEl);
+    } catch (err) {
+      console.warn('[Aegis] Clerk auth failed (non-blocking):', err);
+    }
+  })();
 
-  // Pre-load MediaPipe Model
+  // Pre-load MediaPipe Model — runs immediately, not blocked by auth
   initFaceLandmarker();
   
   // Set default button disabled until loaded
