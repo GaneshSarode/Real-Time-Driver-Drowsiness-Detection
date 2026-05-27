@@ -63,7 +63,7 @@ export async function requireAuth() {
   if (!clerk) return null;
 
   if (!clerk.user) {
-    window.location.href = '/?sign-in=true';
+    console.warn('[Aegis Auth] User not signed in or session cookie blocked. Analytics saving disabled.');
     return null;
   }
 
