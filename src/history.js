@@ -1,7 +1,7 @@
 import './styles/design-system.css';
 import './styles/history.css';
 import { initTheme } from './lib/theme.js';
-import { requireAuth, mountUserButton, getUserId } from './lib/clerk.js';
+import { initClerk, mountUserButton, getUserId } from './lib/clerk.js';
 import { getUserStats, getUserSessions } from './lib/supabase.js';
 import { Chart, registerables } from 'chart.js';
 
@@ -17,33 +17,47 @@ async function init() {
 
   // Load auth + data in background — NEVER block the page
   try {
-    const clerk = await requireAuth();
+    const clerk = await initClerk();
 
-    // Mount user button in sidebar
+    const signInBtn = document.getElementById('btn-sign-in');
     const userBtnEl = document.getElementById('clerk-user-btn');
-    if (userBtnEl) mountUserButton(userBtnEl);
 
-    const userId = getUserId();
+    if (clerk && clerk.user) {
+      // User signed in — mount avatar
+      if (userBtnEl) mountUserButton(userBtnEl);
+      if (signInBtn) signInBtn.style.display = 'none';
 
-    // If no userId (no auth configured), keep empty state
-    if (!userId) {
-      console.warn('[History] No user ID — showing empty state');
-      return;
+      const userId = getUserId();
+      if (!userId) {
+        console.warn('[History] No user ID — showing empty state');
+        return;
+      }
+
+      // Fetch data
+      const stats = await getUserStats(userId);
+      const sessions = await getUserSessions(userId);
+
+      // Update stat cards
+      updateStatCards(stats);
+
+      // Re-render charts with real data
+      renderAlertChart(sessions);
+      renderDurationChart(sessions);
+
+      // Render table
+      renderSessionTable(sessions);
+    } else if (clerk) {
+      // Clerk loaded but not signed in — show sign-in button
+      if (signInBtn) {
+        signInBtn.style.display = 'flex';
+        signInBtn.addEventListener('click', () => {
+          clerk.openSignIn({
+            forceRedirectUrl: '/history.html',
+            fallbackRedirectUrl: '/history.html'
+          });
+        });
+      }
     }
-
-    // Fetch data
-    const stats = await getUserStats(userId);
-    const sessions = await getUserSessions(userId);
-
-    // Update stat cards
-    updateStatCards(stats);
-
-    // Re-render charts with real data
-    renderAlertChart(sessions);
-    renderDurationChart(sessions);
-
-    // Render table
-    renderSessionTable(sessions);
   } catch (err) {
     console.warn('[History] Auth or data loading failed:', err);
   }

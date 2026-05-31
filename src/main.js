@@ -2,7 +2,7 @@ import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import './styles/design-system.css';
 import './styles/dashboard.css';
 import { initTheme } from './lib/theme.js';
-import { requireAuth, mountUserButton, getUserId } from './lib/clerk.js';
+import { initClerk, mountUserButton, getUserId } from './lib/clerk.js';
 import { SessionRecorder } from './lib/session-recorder.js';
 import { icon } from './lib/icons.js';
 
@@ -1028,9 +1028,39 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Load Clerk auth in background — NEVER block the dashboard
   (async () => {
     try {
-      const clerk = await requireAuth();
+      const clerk = await initClerk();
+      if (!clerk) {
+        console.warn('[Aegis] No Clerk keys — auth disabled');
+        return;
+      }
+
+      const signInBtn = document.getElementById('btn-sign-in');
       const userBtnEl = document.getElementById('clerk-user-btn');
-      if (userBtnEl) mountUserButton(userBtnEl);
+
+      if (clerk.user) {
+        // User is signed in — mount avatar and start session recording
+        if (userBtnEl) mountUserButton(userBtnEl);
+        if (signInBtn) signInBtn.style.display = 'none';
+
+        // Start session recording with Supabase
+        const userId = getUserId();
+        if (userId) {
+          const recorder = new SessionRecorder(userId, state);
+          window.__aegisRecorder = recorder;
+          await recorder.start();
+        }
+      } else {
+        // User not signed in — show sign-in button
+        if (signInBtn) {
+          signInBtn.style.display = 'flex';
+          signInBtn.addEventListener('click', () => {
+            clerk.openSignIn({
+              forceRedirectUrl: '/dashboard.html',
+              fallbackRedirectUrl: '/dashboard.html'
+            });
+          });
+        }
+      }
     } catch (err) {
       console.warn('[Aegis] Clerk auth failed (non-blocking):', err);
     }
