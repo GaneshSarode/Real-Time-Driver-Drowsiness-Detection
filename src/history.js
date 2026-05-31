@@ -51,9 +51,8 @@ async function init() {
       if (signInBtn) {
         signInBtn.style.display = 'flex';
         signInBtn.addEventListener('click', () => {
-          clerk.openSignIn({
-            forceRedirectUrl: '/history.html',
-            fallbackRedirectUrl: '/history.html'
+          clerk.redirectToSignIn({
+            redirectUrl: window.location.href
           });
         });
       }

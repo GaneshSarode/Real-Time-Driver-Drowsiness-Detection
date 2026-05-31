@@ -1054,9 +1054,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         if (signInBtn) {
           signInBtn.style.display = 'flex';
           signInBtn.addEventListener('click', () => {
-            clerk.openSignIn({
-              forceRedirectUrl: '/dashboard.html',
-              fallbackRedirectUrl: '/dashboard.html'
+            clerk.redirectToSignIn({
+              redirectUrl: window.location.href
             });
           });
         }
