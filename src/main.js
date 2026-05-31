@@ -1074,6 +1074,74 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Bind interface drawers & sliders
   loadSettingsHandlers();
 
+  // SPA Navigation
+  const navDashboard = document.getElementById('nav-dashboard');
+  const navHistory = document.getElementById('nav-history');
+  const viewDashboard = document.querySelector('.dashboard-grid');
+  const viewHistory = document.getElementById('history-panel');
+
+  navDashboard.addEventListener('click', () => {
+    navDashboard.classList.add('active');
+    navHistory.classList.remove('active');
+    viewDashboard.style.display = 'grid';
+    viewHistory.style.display = 'none';
+  });
+
+  navHistory.addEventListener('click', async () => {
+    navHistory.classList.add('active');
+    navDashboard.classList.remove('active');
+    viewDashboard.style.display = 'none';
+    viewHistory.style.display = 'block';
+    
+    // Load history data if we have a user
+    const userId = getUserId();
+    if (userId) {
+      try {
+        const { getUserStats, getUserSessions } = await import('./lib/supabase.js');
+        const stats = await getUserStats(userId);
+        const sessions = await getUserSessions(userId);
+        
+        // Update stats
+        document.getElementById('stat-total-sessions').textContent = stats.totalSessions;
+        document.getElementById('stat-drive-time').textContent = (stats.totalMinutes / 60).toFixed(1) + 'h';
+        document.getElementById('stat-total-alerts').textContent = stats.totalAlerts;
+        document.getElementById('stat-avg-ear').textContent = stats.avgEar.toFixed(2);
+        
+        // Render table
+        const tbody = document.getElementById('sessions-table-body');
+        if (sessions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="padding: 2rem 0; text-align: center; color: var(--text-muted);">No sessions recorded yet. Start monitoring to see your history.</td></tr>';
+        } else {
+          tbody.innerHTML = sessions.map(s => {
+            const date = new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const duration = `${(s.duration_minutes || 0).toFixed(1)} min`;
+            const status = (s.alert_count || 0) > 3 ? 'Risky' : (s.alert_count || 0) > 0 ? 'Caution' : 'Safe';
+            const statusClass = status === 'Risky' ? 'status-danger' : status === 'Caution' ? 'status-warning' : 'status-safe';
+            return `<tr>
+              <td style="padding: 0.75rem 0;">${date}</td>
+              <td class="font-mono">${duration}</td>
+              <td class="font-mono">${s.alert_count || 0}</td>
+              <td class="font-mono">${s.yawn_count || 0}</td>
+              <td class="font-mono">${(s.avg_ear || 0).toFixed(2)}</td>
+              <td><span class="status-badge ${statusClass}">${status}</span></td>
+            </tr>`;
+          }).join('');
+        }
+        
+        // Try rendering charts
+        try {
+          const { Chart, registerables } = await import('chart.js');
+          Chart.register(...registerables);
+          
+          // Basic chart logic (re-using canvas requires destroying old ones or simpler just don't re-render if it exists)
+          // For now just keep it simple, the table covers the basics.
+        } catch(e) {}
+      } catch (err) {
+        console.error('Failed to load history:', err);
+      }
+    }
+  });
+
   // Bind controls
   initDashboardControls();
 

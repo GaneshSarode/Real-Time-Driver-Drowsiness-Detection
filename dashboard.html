@@ -87,12 +87,12 @@
           </div>
 
           <nav class="sidebar-nav">
-            <a href="/dashboard.html" class="sidebar-nav-item active" title="Dashboard">
+            <button class="sidebar-nav-item active" id="nav-dashboard" title="Dashboard">
               <svg class="icon" width="20" height="20"><use href="/icons.svg#icon-dashboard"/></svg>
-            </a>
-            <a href="/history.html" class="sidebar-nav-item" title="History">
+            </button>
+            <button class="sidebar-nav-item" id="nav-history" title="History">
               <svg class="icon" width="20" height="20"><use href="/icons.svg#icon-history"/></svg>
-            </a>
+            </button>
             <button class="sidebar-nav-item" id="nav-settings-toggle" title="Settings">
               <svg class="icon" width="20" height="20"><use href="/icons.svg#icon-settings"/></svg>
             </button>
@@ -265,6 +265,67 @@
               </div>
 
             </section>
+          </div>
+
+          <!-- History Panel (Hidden by default) -->
+          <div id="history-panel" style="display: none;">
+            <!-- Stat Cards -->
+            <div class="stats-overview" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+              <div class="glass-card overview-card" style="padding: 1.25rem;">
+                <span class="text-muted" style="font-size:0.7rem; text-transform:uppercase">Total Sessions</span>
+                <div class="font-mono" id="stat-total-sessions" style="font-size:1.5rem; font-weight:bold; margin-top:0.25rem;">0</div>
+              </div>
+              <div class="glass-card overview-card" style="padding: 1.25rem;">
+                <span class="text-muted" style="font-size:0.7rem; text-transform:uppercase">Drive Time</span>
+                <div class="font-mono" id="stat-drive-time" style="font-size:1.5rem; font-weight:bold; margin-top:0.25rem;">0h</div>
+              </div>
+              <div class="glass-card overview-card" style="padding: 1.25rem;">
+                <span class="text-muted" style="font-size:0.7rem; text-transform:uppercase">Total Alerts</span>
+                <div class="font-mono" id="stat-total-alerts" style="font-size:1.5rem; font-weight:bold; margin-top:0.25rem; color:var(--danger)">0</div>
+              </div>
+              <div class="glass-card overview-card" style="padding: 1.25rem;">
+                <span class="text-muted" style="font-size:0.7rem; text-transform:uppercase">Avg EAR</span>
+                <div class="font-mono" id="stat-avg-ear" style="font-size:1.5rem; font-weight:bold; margin-top:0.25rem;">0.00</div>
+              </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="charts-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+              <div class="glass-card" style="padding: 1.25rem;">
+                <h2 style="font-size:1rem; margin-bottom:1rem;">Daily Alerts (7 Days)</h2>
+                <div style="height:250px"><canvas id="chart-alerts"></canvas></div>
+              </div>
+              <div class="glass-card" style="padding: 1.25rem;">
+                <h2 style="font-size:1rem; margin-bottom:1rem;">Session Duration</h2>
+                <div style="height:250px"><canvas id="chart-duration"></canvas></div>
+              </div>
+            </div>
+
+            <!-- Session Table -->
+            <div class="glass-card" style="padding: 1.25rem;">
+              <h2 style="font-size:1rem; margin-bottom:1rem;">Session History</h2>
+              <div style="overflow-x:auto;">
+                <table style="width:100%; text-align:left; border-collapse: collapse;">
+                  <thead>
+                    <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 0.8rem;">
+                      <th style="padding: 0.75rem 0;">Date</th>
+                      <th>Duration</th>
+                      <th>Alerts</th>
+                      <th>Yawns</th>
+                      <th>Avg EAR</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sessions-table-body">
+                    <tr>
+                      <td colspan="6" style="padding: 2rem 0; text-align: center; color: var(--text-muted);">
+                        No sessions recorded yet. Start monitoring to see your history.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </main>
 
