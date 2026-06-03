@@ -96,5 +96,4 @@ This project is licensed under the [MIT License](LICENSE).
 ---
 <div align="center">
   <b>Built by Ganesh Sarode</b><br>
-  <i>3rd year EXTC Engineering, VJTI Mumbai</i>
 </div>
