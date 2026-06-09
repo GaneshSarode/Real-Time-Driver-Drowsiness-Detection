@@ -2,8 +2,6 @@ import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import './styles/design-system.css';
 import './styles/dashboard.css';
 import { initTheme } from './lib/theme.js';
-import { initClerk, mountUserButton, getUserId } from './lib/clerk.js';
-import { SessionRecorder } from './lib/session-recorder.js';
 import { icon } from './lib/icons.js';
 
 // ==========================================================================
@@ -13,7 +11,7 @@ import { icon } from './lib/icons.js';
 const state = {
   // ML Engine
   faceLandmarker: null,
-  wasmUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm",
+  wasmUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm",
   modelUrl: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
   
   // Video & Streaming
@@ -34,7 +32,7 @@ const state = {
   isMuted: false,
 
   // Live Metrics & State Machine
-  currentStatus: "SAFE", // SAFE | DISTRACTED | ALARM
+  currentStatus: "SAFE", // SAFE | DISTRACTED | NO_FACE | ALARM
   ear: 0.30,
   mar: 0.12,
   pose: "Ahead", // Ahead | Looking Away | Nodding Down
@@ -51,6 +49,8 @@ const state = {
   yawnFrames: 0,
   noddingFrames: 0,
   distractedFrames: 0,
+  noFaceFrames: 0,
+  noFaceGraceFrames: 20,
   
   // Timing trackers
   wasEyeClosedLastFrame: false,
@@ -73,6 +73,10 @@ const state = {
 
 // Session recorder instance (initialized after auth)
 let sessionRecorder = null;
+let alertsChart = null;
+let durationChart = null;
+const CALIBRATION_DURATION_MS = 3000;
+const MIN_CALIBRATION_SAMPLES = 15;
 
 // Index mappings for MediaPipe Face Mesh
 const FACE_LANDMARKS = {
@@ -292,6 +296,17 @@ function addLog(message, type = "system") {
   }
 }
 
+async function getAuthenticatedUserId() {
+  try {
+    const { initClerk, getUserId } = await import('./lib/clerk.js');
+    const clerk = await initClerk();
+    return clerk?.user ? getUserId() : null;
+  } catch (err) {
+    console.warn('[Aegis] Auth lookup failed:', err);
+    return null;
+  }
+}
+
 // ==========================================================================
 // ML Model Loader (MediaPipe FaceLandmarker)
 // ==========================================================================
@@ -477,6 +492,7 @@ async function startDetectionLoop() {
       
       if (results.faceLandmarks && results.faceLandmarks.length > 0) {
         const landmarks = results.faceLandmarks[0];
+        state.noFaceFrames = 0;
         
         // 1. Process EAR and eye tracking
         const currentEAR = calculateEAR(landmarks);
@@ -598,7 +614,10 @@ function handleNoFaceDetected() {
   meshCtx.clearRect(0, 0, elements.meshCanvas.width, elements.meshCanvas.height);
   state.pose = "No Face";
   elements.poseState.textContent = "No Face";
-  triggerStatusState("SAFE");
+  state.noFaceFrames++;
+  if (state.noFaceFrames >= state.noFaceGraceFrames) {
+    triggerStatusState("NO_FACE");
+  }
   
   elements.gaugeEarValue.textContent = "--";
   elements.gaugeMarValue.textContent = "--";
@@ -643,6 +662,19 @@ function triggerStatusState(newStatus) {
     stopAlarmAudio();
     elements.drowsinessAlarmOverlay.classList.add("hidden");
   } 
+  else if (newStatus === "NO_FACE") {
+    addLog("WARNING: Driver face not detected. Reposition camera or return to frame.", "warning");
+    elements.feedCard.classList.remove("alarm-active");
+    elements.systemStatusBullet.className = "pulse-dot warning";
+    elements.systemStatusText.textContent = "Driver Not Visible";
+    
+    elements.hudStatusBadge.className = "status-badge status-warning";
+    elements.hudPulseDot.className = "pulse-dot warning";
+    elements.hudStatusText.textContent = "NO FACE";
+    
+    stopAlarmAudio();
+    elements.drowsinessAlarmOverlay.classList.add("hidden");
+  }
   else if (newStatus === "SAFE") {
     if (oldStatus === "ALARM") {
       addLog("System cleared. Driver alertness restored.", "system");
@@ -715,6 +747,96 @@ function updateDashboardHUDs() {
   }
 }
 
+async function renderHistoryCharts(sessions) {
+  const alertsCanvas = document.getElementById('chart-alerts');
+  const durationCanvas = document.getElementById('chart-duration');
+  if (!alertsCanvas || !durationCanvas) return;
+
+  const { Chart, registerables } = await import('chart.js');
+  Chart.register(...registerables);
+
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    date.setHours(0, 0, 0, 0);
+    return date;
+  });
+
+  const dayLabels = days.map(day => day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+  const dailyAlerts = days.map(day => {
+    const nextDay = new Date(day);
+    nextDay.setDate(day.getDate() + 1);
+    return sessions
+      .filter(session => {
+        const createdAt = new Date(session.created_at);
+        return createdAt >= day && createdAt < nextDay;
+      })
+      .reduce((sum, session) => sum + (session.alert_count || 0), 0);
+  });
+
+  const recentSessions = sessions.slice(0, 7).reverse();
+  const sessionLabels = recentSessions.map(session =>
+    new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  );
+  const sessionDurations = recentSessions.map(session => Number(session.duration_minutes || 0));
+
+  const gridColor = getComputedStyle(document.body).getPropertyValue('--border-subtle').trim() || 'rgba(255,255,255,0.08)';
+  const textColor = getComputedStyle(document.body).getPropertyValue('--text-secondary').trim() || '#6b7a99';
+  const accentColor = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#00ff88';
+  const dangerColor = getComputedStyle(document.body).getPropertyValue('--danger').trim() || '#ff3b3b';
+
+  const baseOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+    },
+    scales: {
+      x: {
+        grid: { color: gridColor },
+        ticks: { color: textColor },
+      },
+      y: {
+        beginAtZero: true,
+        grid: { color: gridColor },
+        ticks: { color: textColor, precision: 0 },
+      },
+    },
+  };
+
+  if (alertsChart) alertsChart.destroy();
+  alertsChart = new Chart(alertsCanvas, {
+    type: 'bar',
+    data: {
+      labels: dayLabels,
+      datasets: [{
+        data: dailyAlerts,
+        backgroundColor: dangerColor,
+        borderRadius: 6,
+      }],
+    },
+    options: baseOptions,
+  });
+
+  if (durationChart) durationChart.destroy();
+  durationChart = new Chart(durationCanvas, {
+    type: 'line',
+    data: {
+      labels: sessionLabels.length ? sessionLabels : ['No sessions'],
+      datasets: [{
+        data: sessionDurations.length ? sessionDurations : [0],
+        borderColor: accentColor,
+        backgroundColor: 'rgba(0, 255, 136, 0.12)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.35,
+        pointRadius: 3,
+      }],
+    },
+    options: baseOptions,
+  });
+}
+
 // ==========================================================================
 // Webcam Media Streaming Helpers
 // ==========================================================================
@@ -758,6 +880,7 @@ async function requestCameraStream(videoElement) {
 let calibrationFrameCount = 0;
 let calibrationEarSum = 0;
 let isCalibrating = false;
+let calibrationStartTimestamp = 0;
 
 async function startCalibrationFlow() {
   const active = await requestCameraStream(elements.calibrationVideo);
@@ -799,11 +922,12 @@ function runCalibrationCanvasLoop() {
           calibrationEarSum += currentEAR;
           calibrationFrameCount++;
 
-          const percent = Math.min(100, Math.round((calibrationFrameCount / 90) * 100));
+          const elapsed = performance.now() - calibrationStartTimestamp;
+          const percent = Math.min(100, Math.round((elapsed / CALIBRATION_DURATION_MS) * 100));
           elements.calibrationProgress.style.width = `${percent}%`;
           elements.calibrationProgress.textContent = `${percent}%`;
 
-          if (calibrationFrameCount >= 90) {
+          if (elapsed >= CALIBRATION_DURATION_MS && calibrationFrameCount >= MIN_CALIBRATION_SAMPLES) {
             isCalibrating = false;
             state.calibratedOpenEAR = calibrationEarSum / calibrationFrameCount;
             
@@ -815,10 +939,15 @@ function runCalibrationCanvasLoop() {
 
             finishCalibrationFlow();
             return;
+          } else if (elapsed >= CALIBRATION_DURATION_MS) {
+            elements.calibrationInstruction.textContent = "Keep your face visible for a few more moments to capture a stable baseline.";
           }
         }
       } else {
         elements.btnStartCalibration.style.display = "none";
+        if (isCalibrating) {
+          elements.calibrationInstruction.textContent = "Face lost. Re-center in the frame to continue calibration.";
+        }
         calCtx.fillStyle = "rgba(255, 59, 59, 0.8)";
         calCtx.font = "12px 'Space Grotesk'";
         calCtx.fillText("Align Face in Center", 95, 20);
@@ -832,6 +961,7 @@ function runCalibrationCanvasLoop() {
 function runCalibration() {
   calibrationFrameCount = 0;
   calibrationEarSum = 0;
+  calibrationStartTimestamp = performance.now();
   isCalibrating = true;
   elements.btnStartCalibration.disabled = true;
   elements.calibrationInstruction.textContent = "Keep eyes open and look directly at camera. Calibrating...";
@@ -864,9 +994,10 @@ async function startWebcamMonitoring() {
   state.isCameraActive = true;
   addLog("Monitoring stream initiated.", "system");
 
-  // Start session recording
-  const userId = getUserId();
-  if (userId) {
+  // Start session recording only when live monitoring is active.
+  const userId = await getAuthenticatedUserId();
+  if (userId && !sessionRecorder) {
+    const { SessionRecorder } = await import('./lib/session-recorder.js');
     sessionRecorder = new SessionRecorder(userId, state);
     await sessionRecorder.start();
   }
@@ -1028,6 +1159,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Load Clerk auth in background — NEVER block the dashboard
   (async () => {
     try {
+      const { initClerk, mountUserButton } = await import('./lib/clerk.js');
       const clerk = await initClerk();
       if (!clerk) {
         console.warn('[Aegis] No Clerk keys — auth disabled');
@@ -1042,13 +1174,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         if (userBtnEl) mountUserButton(userBtnEl);
         if (signInBtn) signInBtn.style.display = 'none';
 
-        // Start session recording with Supabase
-        const userId = getUserId();
-        if (userId) {
-          const recorder = new SessionRecorder(userId, state);
-          window.__aegisRecorder = recorder;
-          await recorder.start();
-        }
+        // Analytics sessions begin only after the camera monitor starts.
       } else {
         // User not signed in — show sign-in button
         if (signInBtn) {
@@ -1080,21 +1206,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   const viewDashboard = document.querySelector('.dashboard-grid');
   const viewHistory = document.getElementById('history-panel');
 
-  navDashboard.addEventListener('click', () => {
+  const showDashboardView = () => {
     navDashboard.classList.add('active');
     navHistory.classList.remove('active');
     viewDashboard.style.display = 'grid';
     viewHistory.style.display = 'none';
-  });
+  };
 
-  navHistory.addEventListener('click', async () => {
+  const showHistoryView = async () => {
     navHistory.classList.add('active');
     navDashboard.classList.remove('active');
     viewDashboard.style.display = 'none';
     viewHistory.style.display = 'block';
     
     // Load history data if we have a user
-    const userId = getUserId();
+    const userId = await getAuthenticatedUserId();
     if (userId) {
       try {
         const { getUserStats, getUserSessions } = await import('./lib/supabase.js');
@@ -1128,19 +1254,36 @@ window.addEventListener("DOMContentLoaded", async () => {
           }).join('');
         }
         
-        // Try rendering charts
-        try {
-          const { Chart, registerables } = await import('chart.js');
-          Chart.register(...registerables);
-          
-          // Basic chart logic (re-using canvas requires destroying old ones or simpler just don't re-render if it exists)
-          // For now just keep it simple, the table covers the basics.
-        } catch(e) {}
+        await renderHistoryCharts(sessions);
       } catch (err) {
         console.error('Failed to load history:', err);
       }
     }
+  };
+
+  navDashboard.addEventListener('click', () => {
+    history.replaceState(null, '', '#dashboard');
+    showDashboardView();
   });
+
+  navHistory.addEventListener('click', async () => {
+    history.replaceState(null, '', '#history');
+    await showHistoryView();
+  });
+
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#history') {
+      showHistoryView();
+    } else {
+      showDashboardView();
+    }
+  });
+
+  if (window.location.hash === '#history') {
+    await showHistoryView();
+  } else {
+    showDashboardView();
+  }
 
   // Bind controls
   initDashboardControls();

@@ -125,12 +125,12 @@ export class SessionRecorder {
   }
 
   /**
-   * Internal: handle tab close — use sendBeacon for reliability.
+   * Internal: handle tab close with a best-effort keepalive update.
    */
   _onBeforeUnload() {
     if (!this.isRecording || !this.sessionId) return;
 
-    // Best-effort save via sendBeacon (sync)
+    // Best-effort save during page unload.
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseKey) return;
@@ -154,6 +154,15 @@ export class SessionRecorder {
     });
 
     const url = `${supabaseUrl}/rest/v1/driving_sessions?id=eq.${this.sessionId}`;
-    navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+    fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+      },
+      body,
+      keepalive: true,
+    }).catch(() => {});
   }
 }

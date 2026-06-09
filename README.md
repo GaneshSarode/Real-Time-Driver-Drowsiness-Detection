@@ -1,99 +1,96 @@
 <div align="center">
-  <h1>🛡️ Aegis Drive</h1>
+  <h1>Aegis Drive</h1>
   <p><strong>AI-Powered Driver Safety System</strong></p>
 
   [![Live Demo](https://img.shields.io/badge/Demo-Live_Deployment-00ff88?style=for-the-badge&logo=vercel)](https://aegis-drive.vercel.app)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
   [![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
   [![Vercel](https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://vercel.com)
-  
-  <p>On-device, real-time driver drowsiness detection. Built with zero cloud latency to ensure split-second reaction times when it matters most.</p>
+
+  <p>On-device, real-time driver drowsiness detection built for low-latency browser inference.</p>
 </div>
 
-<br />
+## Features
 
-<div align="center">
+- **Real-time eye tracking:** Monitors Eye Aspect Ratio (EAR) to detect extended eye closure and micro-sleep risk.
+- **Yawn detection:** Uses Mouth Aspect Ratio (MAR) to identify fatigue patterns.
+- **Head pose estimation:** Tracks orientation changes to detect nodding down and looking away.
+- **Instant audio-visual alerts:** Uses Web Audio synthesis and visual warnings when drowsiness is detected.
+- **Personal calibration:** Captures a short driver-specific baseline before monitoring begins.
+- **Adjustable thresholds:** Exposes EAR, MAR, alarm duration, alarm volume, visual alert, and mesh rendering controls.
+- **Session history:** Saves and reviews authenticated driving sessions with Supabase-backed metrics.
+- **On-device processing:** Runs MediaPipe FaceLandmarker in the browser without sending camera frames to a backend.
 
-![Dashboard](./public/screenshot.png)
-
-</div>
-
-## ✨ Features
-
-- 👁️ **Real-Time Eye Tracking (EAR):** Monitors micro-sleep events and blink frequency using Eye Aspect Ratio calculations.
-- 🗣️ **Yawn Detection (MAR):** Analyzes fatigue patterns through Mouth Aspect Ratio to catch early signs of drowsiness.
-- 🧭 **Head Pose Estimation:** 3D facial orientation tracking to detect nodding off or distracted driving.
-- 🔊 **Instant Web Audio Alerts:** Synthesized, multi-sensory alarm system triggering immediate driver response upon critical fatigue detection.
-- ⚙️ **Custom Calibration Wizard:** Quick 3-second initialization to set personalized biometric baselines.
-- 🎛️ **Advanced Settings Panel:** Full control over detection thresholds (EAR/MAR) and alarm configurations.
-- ⚡ **30+ FPS On-Device Processing:** Zero cloud latency, ensuring instant inference entirely in the browser.
-- 📱 **PWA Ready:** Designed to work progressively across devices.
-
-## 🛠 Tech Stack
+## Tech Stack
 
 | Technology | Role |
 | :--- | :--- |
-| **MediaPipe FaceMesh** | Core 468-point facial landmark detection (WebAssembly) |
-| **Vite** | Next-generation frontend tooling and bundling |
-| **Vanilla JavaScript** | Zero-dependency, highly optimized execution logic |
-| **Vanilla CSS** | Custom glassmorphism UI with a premium dark theme |
-| **Vercel** | Edge network hosting and CI/CD deployment |
+| MediaPipe FaceLandmarker | Facial landmark detection |
+| Vite | Frontend build tooling |
+| Vanilla JavaScript | Application logic and detection loop |
+| Vanilla CSS | Dashboard, landing page, and design system |
+| Clerk | Optional authentication |
+| Supabase | Optional session storage and history |
+| Chart.js | History visualizations |
+| Vercel | Deployment |
 
-## 🚀 How It Works
+## How It Works
 
-1. **Calibrate:** The system performs a quick 3-second facial scan to establish your baseline resting eye and mouth shapes.
-2. **Drive:** Aegis Drive continually monitors your face at 30+ FPS using MediaPipe's WASM engine, analyzing EAR, MAR, and head pose.
-3. **Stay Safe:** If critical drowsiness thresholds are crossed (e.g., prolonged eye closure or frequent yawning), visual and high-frequency audio alerts trigger instantly to restore driver alertness.
+1. **Calibrate:** The app captures a short baseline of the driver's open-eye EAR.
+2. **Monitor:** MediaPipe detects facial landmarks from the webcam stream in real time.
+3. **Analyze:** EAR, MAR, and head pose rules classify safe, distracted, no-face, and alarm states.
+4. **Alert:** The dashboard triggers visual and audio warnings when drowsiness risk is detected.
+5. **Review:** Signed-in users can review session metrics and history charts.
 
-## 💻 Quick Start
+## Quick Start
 
-To run Aegis Drive locally on your machine:
+```bash
+git clone https://github.com/GaneshSarode/Real-Time-Driver-Drowsiness-Detection.git
+cd Real-Time-Driver-Drowsiness-Detection
+npm install
+npm run dev
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/GaneshSarode/Real-Time-Driver-Drowsiness-Detection.git
-   cd Real-Time-Driver-Drowsiness-Detection
-   ```
+## Environment Variables
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+Create a `.env` file when you want authentication and cloud history features:
 
-3. **Start the development server**
-   ```bash
-   npm run dev
-   ```
+```bash
+VITE_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
 
-## 🔬 Research & Inspiration
+The dashboard still runs without these values; authentication and database history are disabled in that mode.
 
-Aegis Drive's geometric algorithms are heavily inspired by recent advancements in computer vision and driver safety research:
+## Research Inspiration
 
-> **Hassan et al., "Real-time driver drowsiness detection using transformer architectures"**  
-> *Scientific Reports 2025, Nature Publishing Group*  
-> [DOI: 10.1038/s41598-025-02111-x](https://doi.org/10.1038/s41598-025-02111-x)
+Aegis Drive implements geometric facial landmark techniques commonly used in driver drowsiness systems, especially EAR and MAR calculations. The project also references:
 
-The system implements the fundamental concepts of EAR (Eye Aspect Ratio) and MAR (Mouth Aspect Ratio) as robust indicators of human fatigue.
+> Hassan et al., "Real-time driver drowsiness detection using transformer architectures"  
+> Scientific Reports, 2025  
+> https://doi.org/10.1038/s41598-025-02111-x
 
-## 🗺 Roadmap
+## Roadmap
 
 - [x] MediaPipe detection engine integration
-- [x] Real-time EAR/MAR geometric computation
-- [x] Premium Landing page design
-- [ ] Clerk authentication
-- [ ] Supabase session storage
-- [ ] History dashboard
-- [ ] ONNX-trained custom transformer model integration
+- [x] Real-time EAR/MAR computation
+- [x] Head pose and no-face warning states
+- [x] Landing page and dashboard UI
+- [x] Clerk authentication integration
+- [x] Supabase session storage
+- [x] History dashboard with charts
+- [ ] Add automated browser tests for dashboard routes
+- [ ] Add a custom trained model for improved fatigue classification
+- [ ] Add PWA install/offline support
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
-
-## 📜 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
 
 ---
+
 <div align="center">
-  <b>Built by Ganesh Sarode</b><br>
+  <strong>Built by Ganesh Sarode</strong><br>
+  <em>3rd year EXTC Engineering, VJTI Mumbai</em>
 </div>
