@@ -1,7 +1,6 @@
 import './styles/design-system.css';
 import './styles/landing.css';
 import { initTheme } from './lib/theme.js';
-import { initClerk } from './lib/clerk.js';
 
 function init() {
   // Theme toggle
@@ -25,6 +24,7 @@ function init() {
   // Load Clerk in background — only used to update CTA text, never blocks navigation
   (async () => {
     try {
+      const { initClerk } = await import('./lib/clerk.js');
       const clerk = await initClerk();
       if (!clerk) return;
 
